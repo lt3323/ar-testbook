@@ -398,19 +398,36 @@
             }
         });
 
-        // 5. 錯誤處理
+        // 5. 狀態監聽與診斷
+        sceneEl.addEventListener("arReady", () => {
+            console.log("MindAR 已就緒，可以開始掃描");
+        });
+
         sceneEl.addEventListener("arError", (event) => {
             console.error("AR Error:", event);
             document.getElementById('error-msg').style.display = 'block';
-            setTimeout(() => {
-                document.getElementById('error-msg').style.display = 'none';
-                stopAR();
-            }, 3000);
         });
 
-        // 監聽就緒
-        sceneEl.addEventListener("arReady", () => {
-            console.log("掃描器已就緒");
+        const targetEntity = document.querySelector('[mindar-image-target]');
+
+        targetEntity.addEventListener("targetFound", (event) => {
+            console.log("成功辨識到目標圖片！");
+            if (navigator.vibrate) navigator.vibrate(200); // 震動長一點方便確認
+        });
+
+        targetEntity.addEventListener("targetLost", (event) => {
+            console.log("目標圖片已離開視線");
+        });
+
+        // 6. 3D 模型點擊互動
+        sceneEl.addEventListener('click', () => {
+            const lines = document.querySelectorAll('.magnetic-line');
+            const arrow = document.querySelector('#arrow');
+            if (arrow) {
+                const newState = !arrow.getAttribute('visible');
+                lines.forEach(line => line.setAttribute('visible', newState));
+                arrow.setAttribute('visible', newState);
+            }
         });
     </script>
 </body>
