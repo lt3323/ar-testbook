@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <meta charset="utf-8">
+    <title>AR 物理課本 - 磁場演示</title>
+    <!-- 使用 1.4.2 版本，對 AR 支持最穩定 -->
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap">
+
+    <style>
+        :root {
+            --primary-color: #007AFF;
+            --bg-color: #f5f5f7;
+            --card-bg: rgba(255, 255, 255, 0.9);
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Outfit', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+            background-color: var(--bg-color);
+            color: #1d1d1f;
+            overflow-x: hidden;
+            scroll-behavior: smooth;
+        }
+
+        /* 課本瀏覽層 */
+        #textbook-view {
+            padding: 40px 20px;
+            max-width: 900px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        @media (min-width: 768px) {
+            #textbook-view {
+                flex-direction: row;
+                align-items: flex-start;
+                padding: 60px 20px;
+            }
+
+            .content-main {
+                flex: 1;
+            }
+
+            .desktop-sidebar {
+                width: 250px;
+                position: sticky;
+                top: 40px;
+                display: block !important;
+            }
+        }
+
+        .header {
+            margin-bottom: 30px;
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 10px;
+        }
+
+        .section-tag {
+            color: var(--primary-color);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 600;
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        h1 {
+            font-size: 2.2rem;
+            margin: 0;
+            font-weight: 600;
+        }
+
+        .content-card {
+            background: white;
+            padding: 30px;
+            border-radius: 24px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+            margin: 20px 0;
+        }
+
+        .content-image-wrapper {
+            position: relative;
+            margin: 30px 0;
+        }
+
+        .content-image {
+            width: 100%;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+            transition: transform 0.3s ease;
+            display: block;
+        }
+
+        .image-caption {
+            display: block;
+            text-align: center;
+            margin-top: 15px;
+            color: #86868b;
+            font-size: 0.9rem;
+        }
+
+        /* QR Code 側欄 (電腦版專用) */
+        .desktop-sidebar {
+            display: none;
+            background: #fff;
+            padding: 24px;
+            border-radius: 24px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+            text-align: center;
+        }
+
+        .qr-code {
+            width: 150px;
+            height: 150px;
+            margin: 15px auto;
+            background: #eee;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .qr-code img {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 互動提示按鈕 (手機版專用) */
+        #ar-prompt {
+            position: fixed;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%) translateY(150px);
+            background: var(--primary-color);
+            color: white;
+            padding: 18px 35px;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            box-shadow: 0 15px 30px rgba(0, 122, 255, 0.4);
+            z-index: 100;
+            display: none;
+            /* 預設隱藏，由 JS 判斷 */
+            align-items: center;
+            gap: 12px;
+            transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            border: none;
+            cursor: pointer;
+        }
+
+        #ar-prompt.visible {
+            display: flex;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        #ar-prompt:active {
+            transform: translateX(-50%) scale(0.95);
+        }
+
+        /* AR 畫面容器 */
+        #ar-view {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: none;
+            background: black;
+            z-index: 1000;
+        }
+
+        /* 返回按鈕 */
+        #close-ar {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 2000;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 30px;
+            backdrop-filter: blur(15px);
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        #loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: #000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 1500;
+            flex-direction: column;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top-color: var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        #error-msg {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            color: white;
+            z-index: 9999;
+            background: rgba(255, 59, 48, 0.9);
+            padding: 15px;
+            display: none;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- 1. 課本瀏覽模式 -->
+    <div id="textbook-view">
+        <div class="content-main">
+            <div class="header">
+                <span class="section-tag">龍騰普高物理 數位互動教材</span>
+                <h1>4-2 電流的磁效應</h1>
+            </div>
+
+            <div class="content-card">
+                <p style="line-height: 1.8; font-size: 1.1rem;">
+                    安培（André-Marie Ampère）重複電流磁效應的實驗，藉由觀察磁針的偏轉，推導出電流與所產生磁場的關係。如圖 4-2 所示，載有電流的長直導線，會在周圍產生同心圓的磁力線。
+                </p>
+
+                <div class="content-image-wrapper">
+                    <!-- 這裡是手機會偵測的目標 -->
+                    <img id="target-figure" src="長直導線圓線圈周圍的磁場.jpg" class="content-image" alt="圖 4-2 安培右手定則">
+                    <span class="image-caption">▲ 圖 4-2 安培右手定則：長直載流導線產生的磁場</span>
+                </div>
+
+                <p style="line-height: 1.8; font-size: 1.1rem;">
+                    若以右手拇指指為電流方向，磁場的方向可由環繞四指判定，這就是出名的<strong>安培右手定則（right-hand rule）</strong>。
+                </p>
+            </div>
+            <div style="height: 200px"></div>
+        </div>
+
+        <!-- 電腦版 QR Code 區域 -->
+        <div class="desktop-sidebar">
+            <p style="font-weight: 600; margin-bottom: 10px;">📱 想要啟動互動 AR？</p>
+            <p style="font-size: 0.85rem; color: #666;">請拿起手機掃描下方 QR Code 載入實驗室</p>
+            <div class="qr-code" id="qr-container">
+                <!-- 由 JS 生成 QR Code 加載中... -->
+            </div>
+            <p style="font-size: 0.8rem; color: #999; margin-top: 10px;">載入後對準左側圖片即可</p>
+        </div>
+    </div>
+
+    <!-- 2. AR 互動按鈕 -->
+    <!-- 手機版 AR 按鈕 -->
+    <button id="ar-prompt" onclick="startAR()">
+        <span style="font-size: 1.4rem;">🚀</span> 開啟 AR 點擊體驗
+    </button>
+
+    <!-- 3. AR 攝影機畫面 -->
+    <div id="ar-view">
+        <button id="close-ar" onclick="stopAR()">✕ 結束體驗</button>
+
+        <div id="loading-overlay">
+            <div class="spinner"></div>
+            <p>正在啟動虛擬實驗室...</p>
+        </div>
+
+        <!-- uiScanning 設為 no 以關閉掃描線 -->
+        <a-scene mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiLoading: no; uiScanning: no;"
+            embedded renderer="colorManagement: true, physicallyCorrectLights: false" vr-mode-ui="enabled: false"
+            device-orientation-permission-ui="enabled: true">
+
+            <a-camera position="0 0 0" look-controls="enabled: false"
+                cursor="fuse: false; rayOrigin: mouse;"></a-camera>
+
+            <a-entity mindar-image-target="targetIndex: 0">
+                <!-- 磁場演示模型 -->
+                <!-- 導線 -->
+                <a-cylinder position="0 0 0" rotation="90 0 0" radius="0.02" height="0.6" color="#CCCCCC"></a-cylinder>
+
+                <!-- 磁場方向箭頭 -->
+                <a-cone id="arrow" position="0 0 0.35" rotation="90 0 0" radius-bottom="0.04" height="0.1"
+                    color="yellow" visible="false"></a-cone>
+
+                <!-- 磁力線 -->
+                <a-torus class="magnetic-line" position="0 0 0" rotation="90 0 0" radius="0.15" tube="0.005"
+                    color="cyan" visible="false"
+                    animation="property: rotation; to: 90 0 360; loop: true; dur: 3000; easing: linear">
+                </a-torus>
+
+                <a-torus class="magnetic-line" position="0 0 0" rotation="90 0 0" radius="0.25" tube="0.005"
+                    color="cyan" opacity="0.6" visible="false"
+                    animation="property: rotation; to: 90 0 360; loop: true; dur: 5000; easing: linear">
+                </a-torus>
+
+                <!-- 底部基座 -->
+                <a-circle position="0 0 -0.01" radius="0.3" color="black" opacity="0.2"></a-circle>
+            </a-entity>
+        </a-scene>
+    </div>
+
+    <div id="error-msg"><strong>啟動失敗</strong><br>請確認權限或路徑。</div>
+
+    <script>
+        const arPrompt = document.getElementById('ar-prompt');
+        const targetFigure = document.getElementById('target-figure');
+        const arView = document.getElementById('ar-view');
+        const sceneEl = document.querySelector('a-scene');
+
+        // 智慧判斷裝置
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+        // 生成 QR Code (指向當前網址)
+        if (!isMobile) {
+            const currentUrl = window.location.href;
+            const qrImg = document.createElement('img');
+            qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(currentUrl)}`;
+            document.getElementById('qr-container').appendChild(qrImg);
+        }
+
+        // 偵測圖片滾動 (僅手機版顯示按鈕)
+        if (isMobile) {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        arPrompt.classList.add('visible');
+                        if (navigator.vibrate) navigator.vibrate(50);
+                    } else {
+                        arPrompt.classList.remove('visible');
+                    }
+                });
+            }, { threshold: 0.3 });
+            observer.observe(targetFigure);
+        }
+
+        // 2. 啟動 AR 模式
+        function startAR() {
+            document.getElementById('loading-overlay').style.display = 'flex';
+            arView.style.display = 'block';
+            document.body.style.overflow = 'hidden';
+
+            // 取得 MindAR 系統並啟動
+            const startSystem = () => {
+                const system = sceneEl.systems["mindar-image-system"];
+                if (system) {
+                    system.start();
+                    document.getElementById('loading-overlay').style.display = 'none';
+                } else {
+                    // 如果系統還沒完全載入，稍後重試
+                    setTimeout(startSystem, 200);
+                }
+            };
+
+            setTimeout(startSystem, 300);
+        }
+
+        // 3. 關閉 AR 模式
+        function stopAR() {
+            const system = sceneEl.systems["mindar-image-system"];
+            if (system) system.stop();
+            arView.style.display = 'none';
+            document.body.style.overflow = 'auto';
+        }
+
+        // 4. AR 內容互動邏輯
+        sceneEl.addEventListener('click', () => {
+            const lines = document.querySelectorAll('.magnetic-line');
+            const arrow = document.querySelector('#arrow');
+            if (arrow) {
+                const newState = !arrow.getAttribute('visible');
+                lines.forEach(line => line.setAttribute('visible', newState));
+                arrow.setAttribute('visible', newState);
+            }
+        });
+
+        // 5. 錯誤處理
+        sceneEl.addEventListener("arError", (event) => {
+            console.error("AR Error:", event);
+            document.getElementById('error-msg').style.display = 'block';
+            setTimeout(() => {
+                document.getElementById('error-msg').style.display = 'none';
+                stopAR();
+            }, 3000);
+        });
+
+        // 監聽就緒
+        sceneEl.addEventListener("arReady", () => {
+            console.log("掃描器已就緒");
+        });
+    </script>
+</body>
+
+</html>
